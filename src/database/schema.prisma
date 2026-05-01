@@ -1,0 +1,95 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 1. Tenant (Organization) Management
+model Tenant {
+  id            String    @id @default(uuid())
+  name          String
+  domain        String?   @unique
+  slug          String    @unique // e.g., 'acme-travels'
+  isActive      Boolean   @default(true)
+  
+  // Subscription Relation
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  
+  // Relations
+  users         User[]
+  roles         Role[]
+  permissions   Permission[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([slug])
+}
+
+// 2. Subscription Plans (For SaaS Model)
+model Subscription {
+  id          String   @id @default(uuid())
+  planName    String   // e.g., 'Basic', 'Enterprise'
+  price       Decimal  @db.Decimal(10, 2)
+  interval    String   // 'monthly', 'yearly'
+  features    Json     // Store plan limits like (max_users: 10)
+  tenants     Tenant[]
+}
+
+// 3. User Management
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  firstName     String?
+  lastName      String?
+  isActive      Boolean   @default(true)
+  
+  // Multi-tenancy
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  
+  // RBAC
+  roleId        String
+  role          Role      @relation(fields: [roleId], references: [id])
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, email])
+}
+
+// 4. RBAC: Roles
+model Role {
+  id          String       @id @default(uuid())
+  name        String       // e.g., 'Admin', 'Accountant', 'Viewer'
+  description String?
+  
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  
+  users       User[]
+  permissions Permission[] // Many-to-Many
+
+  createdAt   DateTime     @default(now())
+
+  @@unique([name, tenantId]) // প্রতি টেন্যান্টে ইউনিক রোল নাম
+}
+
+// 5. RBAC: Permissions
+model Permission {
+  id          String   @id @default(uuid())
+  action      String   // e.g., 'create', 'read', 'update', 'delete'
+  subject     String   // e.g., 'invoice', 'report', 'bsp_file'
+  
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  roles       Role[]   // Many-to-Many
+
+  @@unique([action, subject, tenantId])
+}
